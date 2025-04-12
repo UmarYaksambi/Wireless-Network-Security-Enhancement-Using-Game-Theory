@@ -21,7 +21,16 @@ log_placeholder = st.empty()
 
 # Sidebar: Dynamic jammed frequency selector
 jammed_frequency = st.sidebar.selectbox("Select jammed frequency", frequencies)
-st.sidebar.markdown(f"### 🚨 Attacker is jamming **frequency {jammed_frequency}**")
+st.sidebar.markdown(f"### 🚨 Attacker is jamming frequency {jammed_frequency}")
+
+# Sidebar: Manual node frequency adjustment
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🎛️ Change Node Frequency")
+node_to_edit = st.sidebar.selectbox("Select Node", list(G.nodes))
+new_freq = st.sidebar.selectbox("New Frequency", frequencies)
+if st.sidebar.button("Update Frequency"):
+    G.nodes[node_to_edit]['frequency'] = new_freq
+    st.sidebar.success(f"Node {node_to_edit} set to frequency {new_freq}")
 
 # --- MAIN SIMULATION LOOP ---
 log = []
@@ -54,9 +63,10 @@ for t in range(run_time):
 
     fig, ax = plt.subplots()
     pos = nx.spring_layout(G, seed=42)
-    nx.draw(G, pos, node_color=color_map, with_labels=False, ax=ax)
-    # nx.draw_networkx_labels(G, pos, labels={n: f"{n}\nF{G.nodes[n]['frequency']}" for n in G.nodes}, ax=ax)p
-    # This label is messing up node naming
+    nx.draw(G, pos, node_color=color_map, with_labels=True, ax=ax)
+    labels = {n: f"Node {n}\nFreq {G.nodes[n]['frequency']}" for n in G.nodes}
+    # nx.draw_networkx_labels(G, pos, labels=labels, ax=ax)
+    # Messing up formaatting
 
     graph_placeholder.pyplot(fig)
     plt.close(fig)  # ✅ Prevent memory overload
