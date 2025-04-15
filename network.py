@@ -17,8 +17,8 @@ for node in G.nodes:
 
 # Layout placeholders
 graph_placeholder = st.empty()
-log_placeholder = st.empty()
 top_placeholder = st.empty()
+log_placeholder = st.empty()
 
 # --- SIDEBAR CONTROLS ---
 attacker_strategies = ["constant", "random", "selective"]
@@ -124,7 +124,7 @@ for t in range(run_time):
 
         st.markdown("### ⚔️ Current Strategies")
         st.markdown(f"**Defender Strategy**: {st.session_state.current_defense['name']} (Hit Rate: {st.session_state.current_defense['hit_rate']}, Resource: {st.session_state.current_defense['resource']})")
-        st.markdown(f"**Attacker Chose**: {st.session_state.attacker_choice}")
+        st.markdown(f"**Attacker Chose**: {attacker_choice}")
 
         if st.session_state.attacker_score > st.session_state.defender_score + 5:
             st.error("⚠️ Critical: Attacker is leading significantly!")
@@ -136,7 +136,7 @@ for t in range(run_time):
     fig, ax = plt.subplots()
     pos = nx.spring_layout(G, seed=42)
     nx.draw(G, pos, node_color=color_map, with_labels=True, ax=ax)
-    labels = {n: f"               Freq {G.nodes[n]['frequency']}" for n in G.nodes}
+    labels = {n: f"      Freq {G.nodes[n]['frequency']}" for n in G.nodes}
     nx.draw_networkx_labels(G, pos, labels=labels, ax=ax, font_size=10, verticalalignment='bottom')
     graph_placeholder.pyplot(fig)
     plt.close(fig)
