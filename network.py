@@ -51,8 +51,9 @@ status_placeholder = st.empty()
 
 # --- UTILITY FUNCTION ---
 def payoff(attacker, defender, success):
-    ap = 5 if success else 0
-    dp = 5 if not success else 0
+    success_ratio = success / NUM_NODES
+    ap = 5 * (1 - success_ratio)  # More nodes jammed = higher attacker reward
+    dp = 5 * success_ratio        # More nodes successful = higher defender reward
     return attack_cost.get(attacker, 2), defense_cost.get(defender, 1), ap, dp
 
 # --- SIMULATION LOOP ---
@@ -63,8 +64,13 @@ if run_sim:
 
         # --- STRATEGY SELECTION ---
         if mode == "Bayesian Game":
-            atk = max(attacker_belief, key=attacker_belief.get)
-            dfd = max(defender_belief, key=defender_belief.get)
+            def softmax(beliefs, temp=0.5):
+                exp_vals = {k: np.exp(v / temp) for k, v in beliefs.items()}
+                total = sum(exp_vals.values())
+                return random.choices(list(exp_vals.keys()), weights=exp_vals.values())[0]
+
+            atk = softmax(attacker_belief)
+            dfd = softmax(defender_belief)
         else:
             atk = random.choice(attacker_strategies)
             dfd = random.choice(defender_strategies)
@@ -103,7 +109,7 @@ if run_sim:
                 success += 1
 
         # --- SCORE ---
-        atk_cost, def_cost, ap, dp = payoff(atk, dfd, success <= 2)
+        atk_cost, def_cost, ap, dp = payoff(atk, dfd, success)
         a_reward = ap - atk_cost
         d_reward = dp - def_cost
 
@@ -123,6 +129,13 @@ if run_sim:
             attacker_belief = {d: defender_success_rate.get(d, 0) / total_def_success for d in defender_strategies}
         if total_atk_success > 0:
             defender_belief = {a: attacker_success_rate.get(a, 0) / total_atk_success for a in attacker_strategies}
+
+        # Optional: Prevent convergence trap by injecting tiny noise every 10 steps
+        if step % 10 == 0 and step > 0:
+            attacker_belief = {k: v + random.uniform(0, 0.01) for k, v in attacker_belief.items()}
+            defender_belief = {k: v + random.uniform(0, 0.01) for k, v in defender_belief.items()}
+            attacker_belief = {k: v / sum(attacker_belief.values()) for k, v in attacker_belief.items()}
+            defender_belief = {k: v / sum(defender_belief.values()) for k, v in defender_belief.items()}
 
         # --- UI ---
         with status_placeholder.container():
