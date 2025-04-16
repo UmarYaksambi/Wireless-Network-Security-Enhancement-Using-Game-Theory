@@ -3,6 +3,8 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import random
 import time
+import nashpy as nash
+import numpy as np
 
 st.set_page_config(page_title="IoT Jamming Simulation", layout="wide")
 
@@ -17,15 +19,14 @@ for node in G.nodes:
 
 # Layout placeholders
 graph_placeholder = st.empty()
-top_placeholder = st.empty()
 log_placeholder = st.empty()
+score_placeholder = st.empty()
 
 # --- SIDEBAR CONTROLS ---
 attacker_strategies = ["constant", "random", "selective"]
 defender_strategies = ["stay", "switch"]
-strategy_mode = st.sidebar.selectbox("Attacker Strategy Mode", ["fixed", "mixed"])
+strategy_mode = st.sidebar.selectbox("Strategy Mode", ["game-theory", "fixed", "mixed"])
 fixed_attacker_strategy = st.sidebar.selectbox("Fixed Attacker Strategy", attacker_strategies)
-
 auto_defend = st.sidebar.checkbox("Enable Auto Defender", value=True)
 
 # Manual node frequency adjustment
@@ -38,13 +39,25 @@ if st.sidebar.button("Update Frequency"):
     st.sidebar.success(f"Node {node_to_edit} set to frequency {new_freq}")
 
 # --- GAME THEORY PAYOFF MATRIX ---
+payoff_matrix_attacker = np.array([
+    [2, -2],
+    [0,  0],
+    [3, -3]
+])
+
+payoff_matrix_defender = np.array([
+    [-5, 5],
+    [0,  0],
+    [-7, 7]
+])
+
 payoffs = {
-    ("constant", "stay"):     (+2, -5),
-    ("constant", "switch"):   (-2, +5),
+    ("constant", "stay"):     (2, -5),
+    ("constant", "switch"):   (-2, 5),
     ("random", "stay"):       (0, 0),
     ("random", "switch"):     (0, 0),
-    ("selective", "stay"):    (+3, -7),
-    ("selective", "switch"):  (-3, +7),
+    ("selective", "stay"):    (3, -7),
+    ("selective", "switch"):  (-3, 7),
 }
 
 # Scores
@@ -57,6 +70,17 @@ if "current_defense" not in st.session_state:
 if "attacker_choice" not in st.session_state:
     st.session_state.attacker_choice = "constant"
 
+# --- GAME THEORY STRATEGY SELECTION ---
+def get_nash_equilibrium():
+    game = nash.Game(payoff_matrix_attacker, payoff_matrix_defender)
+    equilibria = list(game.support_enumeration())
+    if equilibria:
+        atk_strategy, def_strategy = equilibria[0]  # Use first equilibrium
+        atk_choice = attacker_strategies[np.argmax(atk_strategy)]
+        def_choice = defender_strategies[np.argmax(def_strategy)]
+        return atk_choice, def_choice
+    return "random", "stay"
+
 # --- MAIN SIMULATION LOOP ---
 run_time = 40
 log = []
@@ -64,12 +88,18 @@ log = []
 for t in range(run_time):
     logs_this_tick = []
 
-    # --- Attacker chooses strategy ---
+    # --- Attacker & Defender choose strategy ---
     if strategy_mode == "fixed":
         attacker_choice = fixed_attacker_strategy
+        defender_choice = "switch" if auto_defend else "stay"
+    elif strategy_mode == "mixed":
+        attacker_choice = random.choices(attacker_strategies, weights=[0.3, 0.4, 0.3])[0]
+        defender_choice = "switch" if auto_defend else "stay"
     else:
-        attacker_choice = random.choices(attacker_strategies, weights=[0.3, 0.4, 0.3])[0]  # Mixed strategy
+        attacker_choice, defender_choice = get_nash_equilibrium()
+
     st.session_state.attacker_choice = attacker_choice
+    st.session_state.current_defense['name'] = defender_choice
 
     # Determine jammed frequency
     if attacker_choice == "constant":
@@ -82,23 +112,15 @@ for t in range(run_time):
 
     logs_this_tick.append(f"[{t}] 🎯 Attacker uses {attacker_choice} jamming on frequency {jammed_frequency}")
 
-    # --- Defender strategy ---
-    current_defense = {"name": "stay", "hit_rate": 0, "resource": 0}
-
+    # --- Node transmission and payoff application ---
     for node in G.nodes:
         freq = G.nodes[node]['frequency']
         if freq == jammed_frequency:
-            def_choice = "switch" if auto_defend else "stay"
-            current_defense['name'] = def_choice
-
-            # Apply defender action
-            if def_choice == "switch":
+            if defender_choice == "switch":
                 new_freq = random.choice([f for f in frequencies if f != jammed_frequency])
                 G.nodes[node]['frequency'] = new_freq
                 logs_this_tick.append(f"[{t}] 🛡 Node {node} switched to Freq {new_freq}")
                 freq = new_freq
-        else:
-            def_choice = "stay"
 
         # Status Update
         if G.nodes[node]['frequency'] == jammed_frequency:
@@ -109,21 +131,19 @@ for t in range(run_time):
             logs_this_tick.append(f"[{t}] ✅ Node {node} sent data on Freq {G.nodes[node]['frequency']}")
 
         # Apply game theory payoff
-        att_payoff, def_payoff = payoffs[(attacker_choice, def_choice)]
+        att_payoff, def_payoff = payoffs[(attacker_choice, defender_choice)]
         st.session_state.attacker_score += att_payoff
         st.session_state.defender_score += def_payoff
 
-    st.session_state.current_defense = current_defense
-
-    # --- Update Top UI ---
-    with top_placeholder:
+    # --- Scores and Strategies Display (Once) ---
+    with score_placeholder.container():
         st.markdown(f"### 📊 Scores")
         col1, col2 = st.columns(2)
         col1.metric("Defender Score", st.session_state.defender_score)
         col2.metric("Attacker Score", st.session_state.attacker_score)
 
         st.markdown("### ⚔️ Current Strategies")
-        st.markdown(f"**Defender Strategy**: {st.session_state.current_defense['name']} (Hit Rate: {st.session_state.current_defense['hit_rate']}, Resource: {st.session_state.current_defense['resource']})")
+        st.markdown(f"**Defender Strategy**: {defender_choice}")
         st.markdown(f"**Attacker Chose**: {attacker_choice}")
 
         if st.session_state.attacker_score > st.session_state.defender_score + 5:
