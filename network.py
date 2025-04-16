@@ -8,7 +8,7 @@ import time
 st.set_page_config(page_title="Realistic Wireless Jamming & Defense: Game Theoretic Models", layout="wide")
 
 # --- SETUP ---
-st.title("🛰️ Realistic Wireless Jamming & Defense: Game Theoretic Models")
+st.title("🚀 Realistic Wireless Jamming & Defense: Game Theoretic Models")
 NUM_NODES = 6
 frequencies = [1, 2, 3]
 G = nx.erdos_renyi_graph(NUM_NODES, 0.5, seed=42)
@@ -30,8 +30,14 @@ st.sidebar.markdown("Use 'Hop' or 'Detect & Switch' to dodge jamming.")
 attack_cost = {"broadband": 3, "sweep": 2, "reactive": 1.5}
 defense_cost = {"hop": 1, "detect_and_switch": 0.5, "stay": 0}
 
+# Initial beliefs (uniform)
 attacker_belief = {d: 1/len(defender_strategies) for d in defender_strategies}
 defender_belief = {a: 1/len(attacker_strategies) for a in attacker_strategies}
+
+# Strategy trackers and success rates for adaptive belief updating
+attacker_success_rate = {a: 0 for a in attacker_strategies}
+defender_success_rate = {d: 0 for d in defender_strategies}
+decay = 0.9
 
 # --- SCORE STATE ---
 if "a_score" not in st.session_state:
@@ -45,13 +51,9 @@ status_placeholder = st.empty()
 
 # --- UTILITY FUNCTION ---
 def payoff(attacker, defender, success):
-    if attacker not in attack_cost:
-        attack_cost[attacker] = 2  # default
-    if defender not in defense_cost:
-        defense_cost[defender] = 1  # default
     ap = 5 if success else 0
     dp = 5 if not success else 0
-    return ap - attack_cost[attacker], dp - defense_cost[defender]
+    return attack_cost.get(attacker, 2), defense_cost.get(defender, 1), ap, dp
 
 # --- SIMULATION LOOP ---
 if run_sim:
@@ -67,7 +69,7 @@ if run_sim:
             atk = random.choice(attacker_strategies)
             dfd = random.choice(defender_strategies)
 
-        logs.append(f"🛑 Attacker strategy: {atk}")
+        logs.append(f"🛡️ Attacker strategy: {atk}")
         logs.append(f"🛡️ Defender strategy: {dfd}")
 
         # --- ATTACK DECISION ---
@@ -101,9 +103,26 @@ if run_sim:
                 success += 1
 
         # --- SCORE ---
-        a_reward, d_reward = payoff(atk, dfd, success <= 2)
+        atk_cost, def_cost, ap, dp = payoff(atk, dfd, success <= 2)
+        a_reward = ap - atk_cost
+        d_reward = dp - def_cost
+
         st.session_state.a_score += a_reward
         st.session_state.d_score += d_reward
+
+        # --- STRATEGY SUCCESS TRACKING & BELIEF UPDATES (Bayesian + Repeated) ---
+        if atk in attacker_success_rate:
+            attacker_success_rate[atk] = decay * attacker_success_rate[atk] + (1 - decay) * (a_reward > 0)
+        if dfd in defender_success_rate:
+            defender_success_rate[dfd] = decay * defender_success_rate[dfd] + (1 - decay) * (d_reward > 0)
+
+        total_atk_success = sum(attacker_success_rate.values())
+        total_def_success = sum(defender_success_rate.values())
+
+        if total_def_success > 0:
+            attacker_belief = {d: defender_success_rate.get(d, 0) / total_def_success for d in defender_strategies}
+        if total_atk_success > 0:
+            defender_belief = {a: attacker_success_rate.get(a, 0) / total_atk_success for a in attacker_strategies}
 
         # --- UI ---
         with status_placeholder.container():
