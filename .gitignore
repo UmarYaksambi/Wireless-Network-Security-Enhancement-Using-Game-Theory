@@ -14,3 +14,6 @@ net/
 # Ignore pdfs
 *.pdf
   
+# Ignore ns-3-dev files
+ns-3-dev/
+Extra/
